@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#142e31">
+  <title>青岬港 · 航海手记</title>
+  <link rel="icon" type="image/svg+xml" href="/pennant.svg">
+</head>
+<body>
+  <header class="appbar">
+    <div class="brand"><span class="brand-icon" data-icon="brand"></span><strong>航海手记</strong><span class="brand-en">HARBOR LOG</span></div>
+    <div class="tools">
+      <button id="pause" class="tool pause" aria-label="暂停航行" title="暂停或继续 (P)"><span class="running-dot"></span><span id="pause-label">模拟运行中</span><i data-icon="pause"></i></button>
+      <span class="divider"></span>
+      <button class="tool square" id="sound" aria-label="开启海港声音" title="开启海港声音" aria-pressed="false"><i data-icon="muted"></i></button>
+      <button class="tool square" id="help" aria-label="驾驶指南" title="驾驶指南"><i data-icon="help"></i></button>
+    </div>
+  </header>
+  <main id="simulation" aria-label="青岬港驾驶模拟">
+    <div id="viewport" aria-label="可驾驶帆船的三维港口场景"></div>
+    <div class="tint"></div>
+    <div class="place"><div class="place-en"><span></span> QINGJIA HARBOR</div><h1>青岬港</h1><div class="location"><i data-icon="pin"></i><span id="location">西侧泊位</span></div></div>
+    <div class="compass" aria-hidden="true"><canvas id="compass"></canvas><b></b></div>
+    <div class="view-tools"><button id="view" title="切换视角 (C)"><i data-icon="camera"></i><span id="view-label">跟随视角</span><i class="tiny" data-icon="change"></i></button></div>
+    <section class="instruments" aria-label="航行仪表">
+      <div class="instrument-top"><span class="orange-rule"></span>航行仪表<span class="instrument-en">TELEMETRY</span></div>
+      <div class="instruments-readings"><div><span class="reading-label">航速</span><div class="readout"><strong id="speed">0.0</strong><small>kn</small></div></div><div class="separator"></div><div><span class="reading-label">航向</span><div class="readout compass-reading"><strong id="heading">000</strong><em>°</em></div></div></div>
+      <div class="speed-scale" id="speed-scale" aria-hidden="true"></div>
+    </section>
+    <div class="key-guide" aria-label="快捷操作"><span><kbd>W</kbd><kbd>S</kbd><b>进退</b></span><span><kbd>A</kbd><kbd>D</kbd><b>转向</b></span><span><kbd>空格</kbd><b>减速</b></span></div>
+    <button class="chart" id="chart-button" title="展开航区图 (M)" aria-label="展开航区图"><span class="chart-paper"><canvas id="minimap"></canvas></span><span class="chart-label"><span><i data-icon="chart"></i> 航区图</span><i data-icon="expand"></i></span></button>
+    <div class="touch-controls" aria-label="触屏驾驶"><div><button data-drive="left" aria-label="左转"><i data-icon="left"></i></button><button data-drive="right" aria-label="右转"><i data-icon="right"></i></button></div><div><button data-drive="reverse" aria-label="倒车"><i data-icon="down"></i></button><button class="go" data-drive="forward" aria-label="前进"><i data-icon="up"></i></button></div></div>
+    <div id="loading" role="status"><span class="loading-wheel"></span><span id="loading-text">正在准备港口…</span></div>
+    <div id="pause-screen" hidden><button id="resume"><i data-icon="play"></i>继续航行</button></div>
+    <div class="notice" id="notice" role="status"></div>
+  </main>
+  <dialog id="guide" class="panel">
+    <div class="dialog-head"><div><div class="overline">HELM GUIDE</div><h2>驾驶指南</h2></div><button class="close" data-close aria-label="关闭"><i data-icon="x"></i></button></div>
+    <div class="guide-rows"><p><span>前进 / 倒车</span><span><kbd>W</kbd><kbd>S</kbd> <small>或</small> <kbd>↑</kbd><kbd>↓</kbd></span></p><p><span>向左 / 向右转舵</span><span><kbd>A</kbd><kbd>D</kbd> <small>或</small> <kbd>←</kbd><kbd>→</kbd></span></p><p><span>减速靠岸</span><kbd>空格</kbd></p><p><span>切换视角 / 暂停</span><span><kbd>C</kbd><kbd>P</kbd></span></p><p><span>查看航区图</span><kbd>M</kbd></p></div>
+    <p class="guide-tip">按住前进键驶离栈桥。松开后小船会顺势滑行，慢速靠近码头即可停靠。触屏可按住两侧方向键驾驶。</p>
+    <button class="primary-button" id="return"><i data-icon="reset"></i>回到起始泊位</button>
+  </dialog>
+  <dialog id="chart-dialog" class="panel chart-dialog">
+    <div class="dialog-head"><div><div class="overline">COASTAL CHART</div><h2>青岬港航区图</h2></div><button class="close" data-close aria-label="关闭"><i data-icon="x"></i></button></div>
+    <canvas id="bigmap" aria-label="标有帆船当前位置、码头与灯塔的地图"></canvas>
+    <div class="map-legend"><span><b class="legend-boat">▲</b>你的小船</span><span><b class="legend-dock"></b>栈桥</span><span><b class="legend-light">✧</b>灯塔</span></div>
+  </dialog>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
