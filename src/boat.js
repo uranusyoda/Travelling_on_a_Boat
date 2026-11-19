@@ -246,8 +246,8 @@ function sailCloth(main) {
 }
 
 function makeSail(parent, main) {
-  const rows = 24, cols = 18, positions = [], indices = [], uvs = [], gust = [];
-  // The boom is eased out to starboard. This gives a distinct sail silhouette from the helm.
+  const rows = 24, cols = 18, positions = [], indices = [], uvs = [], gust = [], camber = [];
+  // The neutral geometry matches the eased boom, gaff and sheets.
   const bottomLuff = main ? V(.05, 1.36, -.66) : V(0, .82, -2.51);
   const topLuff = main ? V(.05, 4.30, -.59) : V(.024, 4.43, -.62);
   const bottomLeech = main ? V(1.31, 1.39, 1.62) : V(-.57, 1.32, -.07);
@@ -263,6 +263,7 @@ function makeSail(parent, main) {
       const belly = Math.sin(Math.PI * Math.pow(u, .85)) * Math.sin(Math.PI * v) * (main ? .37 : .27);
       p.addScaledVector(leechOffset, belly);
       positions.push(p.x, p.y, p.z);
+      camber.push(leechOffset.x * belly, 0, leechOffset.z * belly);
       const flutter = Math.sin(v * Math.PI) * Math.pow(u, 1.2) * Math.sin(v * 13 + u * 2.1);
       gust.push(leechOffset.x * flutter * .07, flutter * .009, leechOffset.z * flutter * .07);
       uvs.push(u, v);
@@ -274,7 +275,14 @@ function makeSail(parent, main) {
   }
   const geometry = finishGeometry(positions, indices, uvs);
   geometry.morphTargetsRelative = true;
-  geometry.morphAttributes.position = [new THREE.Float32BufferAttribute(gust, 3)];
+  geometry.morphAttributes.position = [gust, camber].map(offsets => new THREE.Float32BufferAttribute(offsets, 3));
+  const baseNormals = geometry.getAttribute('normal').array;
+  geometry.morphAttributes.normal = [gust, camber].map(offsets => {
+    const target = finishGeometry(positions.map((p, i) => p + offsets[i]), indices);
+    const normals = target.getAttribute('normal').array.map((n, i) => n - baseNormals[i]);
+    target.dispose();
+    return new THREE.Float32BufferAttribute(normals, 3);
+  });
   const texture = sailCloth(main);
   const material = new THREE.MeshStandardMaterial({
     color: texture ? 0xffffff : main ? 0xf2e1bd : 0xffedd3,
@@ -283,6 +291,41 @@ function makeSail(parent, main) {
   const sail = addMesh(parent, geometry, material);
   sail.name = main ? 'Gaff mainsail' : 'Jib';
   return sail;
+}
+
+// Store the cloth and its spars in boat coordinates, then rotate the whole
+// assembly around the inclined luff. Both ends stay on the same stay or mast.
+function pivotRig(boat, low, high) {
+  const rig = new THREE.Group();
+  boat.add(rig);
+  const axis = high.clone().sub(low).normalize();
+  rig.userData.trim = angle => {
+    rig.quaternion.setFromAxisAngle(axis, angle);
+    rig.position.copy(low).applyQuaternion(rig.quaternion).negate().add(low);
+  };
+  return rig;
+}
+
+function runningSheet(boat, rig, material, clew, deck) {
+  const parts = new THREE.Group();
+  boat.add(parts);
+  const rod = new THREE.CylinderGeometry(.011, .011, 1, 5);
+  const top = addMesh(parts, rod, material);
+  const bottom = addMesh(parts, rod, material);
+  const end = V(0, 0, 0), middle = V(0, 0, 0), direction = V(0, 0, 0);
+  function place(mesh, from, to) {
+    direction.copy(to).sub(from);
+    mesh.scale.y = direction.length();
+    mesh.quaternion.setFromUnitVectors(up, direction.normalize());
+    mesh.position.copy(from).lerp(to, .5);
+  }
+  return () => {
+    end.copy(clew).applyQuaternion(rig.quaternion).add(rig.position);
+    middle.copy(end).lerp(deck, .48);
+    middle.y -= .075;
+    place(top, end, middle);
+    place(bottom, middle, deck);
+  };
 }
 
 export function createBoat() {
@@ -300,10 +343,12 @@ export function createBoat() {
   };
   varnishedHull(boat, m);
   const foot = V(0, .36, -.72), head = V(0, 5.22, -.54);
+  const mainRig = pivotRig(boat, foot, head);
+  const jibRig = pivotRig(boat, V(0, .82, -2.51), V(.024, 4.43, -.62));
   spar(boat, m.spar, foot, head, .066, .037, 13);
   spar(boat, m.brass, V(0, .46, -.714), V(0, .60, -.71), .074);
-  spar(boat, m.rail, V(.01, 1.31, -.70), V(1.38, 1.34, 1.75), .045, .033, 10);
-  spar(boat, m.spar, V(.01, 4.25, -.65), V(.70, 4.96, .55), .037, .024);
+  spar(mainRig, m.rail, V(.01, 1.31, -.70), V(1.38, 1.34, 1.75), .045, .033, 10);
+  spar(mainRig, m.spar, V(.01, 4.25, -.65), V(.70, 4.96, .55), .037, .024);
   for (const h of [1.37, 1.60, 2.14, 2.74, 3.34, 3.96, 4.29]) {
     const z = mix(foot.z, head.z, (h - foot.y) / (head.y - foot.y));
     spar(boat, m.binding, V(0, h, z), V(0, h + .025, z + .001), .062 - h * .004);
@@ -314,15 +359,13 @@ export function createBoat() {
     spar(boat, m.shroud, V(0, 4.47, -.57), V(side * .98, .46, -.30), .010, .013, 5);
     spar(boat, m.brass, V(side * .98, .43, -.30), V(side * .955, .56, -.31), .026);
   }
-  const rigLines = [
-    [V(.64, 4.91, .46), V(.23, 5.02, -.22), V(0, 5.14, -.54)],
-    [V(1.31, 1.36, 1.62), V(.84, .88, 1.78), V(.32, .49, 1.88)],
-    [V(-.57, 1.32, -.07), V(-.73, .77, .42), V(-.85, .45, .91)],
-    [V(.05, 4.28, -.65), V(.10, 2.21, -.61), V(.09, .62, -.67)],
-  ];
-  for (const line of rigLines) tube(boat, m.rope, line, .012, 10, 5);
-  const main = makeSail(boat, true);
-  const jib = makeSail(boat, false);
+  tube(mainRig, m.rope, [V(.64, 4.91, .46), V(.23, 5.02, -.22), V(0, 5.14, -.54)], .012, 10, 5);
+  tube(boat, m.rope, [V(.05, 4.28, -.65), V(.10, 2.21, -.61), V(.09, .62, -.67)], .012, 10, 5);
+  const main = makeSail(mainRig, true);
+  const jib = makeSail(jibRig, false);
+  batchFittings(mainRig);
+  const mainSheet = runningSheet(boat, mainRig, m.rope, V(1.31, 1.36, 1.62), V(.32, .49, 1.88));
+  const jibSheet = runningSheet(boat, jibRig, m.rope, V(-.57, 1.32, -.07), V(-.85, .45, .91));
 
   const tiller = new THREE.Group();
   tiller.position.set(0, .31, 2.43);
@@ -346,19 +389,63 @@ export function createBoat() {
       0, -.23, 0, .18, -.19, .12, .36, -.11, .24],
     [0, 1, 4, 1, 5, 4, 1, 2, 5, 2, 6, 5, 2, 3, 6]);
   flagGeometry.morphTargetsRelative = true;
+  const flagPosition = flagGeometry.getAttribute('position');
+  const droop = [];
+  for (let i = 0; i < flagPosition.count; i++) {
+    const x = flagPosition.getX(i), z = flagPosition.getZ(i);
+    droop.push(-.8 * x, -.95 * Math.hypot(x, z), -.8 * z);
+  }
   flagGeometry.morphAttributes.position = [new THREE.Float32BufferAttribute(
     [0,0,0, -.035,.01,.035, .055,.02,-.05, -.09,.065,.095,
-      0,0,0, -.035,.01,.035, .055,.02,-.05], 3)];
+      0,0,0, -.035,.01,.035, .055,.02,-.05], 3), new THREE.Float32BufferAttribute(droop, 3)];
   const pennant = addMesh(flag, flagGeometry, matte(0xc6613e));
+  flag.name = 'Masthead pennant';
   batchFittings(boat);
 
-  boat.userData.update = (elapsed = 0, speed = 0, steer = 0) => {
-    const wind = Math.min(Math.abs(speed) * .065, .6) + .33;
-    main.morphTargetInfluences[0] = Math.sin(elapsed * 2.4) * wind;
-    jib.morphTargetInfluences[0] = Math.sin(elapsed * 3.3 + .8) * wind;
-    pennant.morphTargetInfluences[0] = Math.sin(elapsed * 6.9);
-    flag.rotation.y = .10 * Math.sin(elapsed * 3.3);
+  let lastTime, mainAngle = 0, jibAngle = 0, tack = 1;
+  const flagBearing = Math.atan2(.59, .37);
+  boat.userData.update = (elapsed = 0, speed = 0, steer = 0, env, heading = 0, lateralSpeed = 0) => {
+    const sin = Math.sin(heading), cos = Math.cos(heading);
+    const trueSpeed = env?.windSpeed || 0;
+    const airX = (env?.windX || 0) * trueSpeed, airZ = (env?.windZ || 0) * trueSpeed;
+    // Positive local Z runs aft. A moving hull creates apparent wind even in a calm.
+    const side = airX * cos + airZ * sin - lateralSpeed;
+    const aft = airZ * cos - airX * sin + speed;
+    const apparent = Math.hypot(side, aft);
+    const load = apparent / (apparent + 2.6);
+    const run = apparent > .01 ? -aft / apparent : 0;
+    if (Math.abs(side) > .22) tack = Math.sign(side);
+    const trim = .12 + .98 * (1 + run) / 2;
+    const spread = THREE.MathUtils.smoothstep(apparent, .08, 2.5);
+    const mainTarget = mix(.38, tack * trim, spread) - .51;
+    const wing = 1 - 2 * THREE.MathUtils.smoothstep(run, .65, .96);
+    const jibTarget = mix(-.29, tack * trim * .55 * wing, spread) + .29;
+    const dt = lastTime === undefined ? 1 : THREE.MathUtils.clamp(elapsed - lastTime, 0, .2);
+    const ease = lastTime === undefined ? 1 : 1 - Math.exp(-dt * 3.4);
+    lastTime = elapsed;
+    mainAngle = mix(mainAngle, mainTarget, ease);
+    jibAngle = mix(jibAngle, jibTarget, ease);
+    mainRig.userData.trim(mainAngle);
+    jibRig.userData.trim(jibAngle);
+    mainSheet();
+    jibSheet();
+
+    const billow = load * Math.tanh(side / 1.6 + tack * .45);
+    main.morphTargetInfluences[1] = mix(main.morphTargetInfluences[1], 1.65 * billow - 1, ease);
+    jib.morphTargetInfluences[1] = mix(jib.morphTargetInfluences[1], -1.5 * billow * wing - 1, ease);
+    main.morphTargetInfluences[0] = Math.sin(elapsed * (2.0 + load * 2.8)) * load;
+    jib.morphTargetInfluences[0] = Math.sin(elapsed * (2.6 + load * 3.3) + .8) * load;
+    const flutter = Math.sin(elapsed * (3.6 + load * 5.8)) * load;
+    pennant.morphTargetInfluences[0] = flutter;
+    pennant.morphTargetInfluences[1] = 1 - THREE.MathUtils.smoothstep(apparent, .1, 3.2);
+    if (apparent > .08) {
+      const desired = Math.atan2(side, aft) - flagBearing + flutter * .045;
+      const delta = desired - flag.rotation.y;
+      flag.rotation.y += Math.atan2(Math.sin(delta), Math.cos(delta)) * ease;
+    }
     tiller.rotation.y = THREE.MathUtils.clamp(steer, -1, 1) * -.48;
   };
+  mainSheet();
+  jibSheet();
   return boat;
 }

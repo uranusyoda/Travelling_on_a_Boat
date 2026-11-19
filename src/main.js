@@ -3,20 +3,25 @@ import * as THREE from 'three';
 import { createBoat } from './boat.js';
 import { createHarbor } from './harbor.js';
 import { createNavigation } from './physics.js';
-import { createSea, addSky, surfaceHeight, createWake } from './sea.js';
+import { createSea, addSky, createWake } from './sea.js';
 import { createHarborAudio } from './audio.js';
 import { drawChart } from './chart.js';
+import { initialWeather, createConditions } from './weather.js';
+import { createWeatherPanel } from './weather-panel.js';
 import { icon, loadIcons } from './icons.js';
 
 const get=id=>document.getElementById(id);
 const viewport=get('viewport'),guide=get('guide'),chartDialog=get('chart-dialog');
 const held=new Set(),touches=new Map(),audio=createHarborAudio();
-let navigation,harbor,scene,renderer,camera,boat,sea,wake;
+let navigation,harbor,scene,renderer,camera,boat,sea,wake,sky,lights;
+const conditions=createConditions(initialWeather);
+let previousFlash=0,thunderAt=Infinity;
 let paused=false,viewMode=0,clock=0,frameTime=0,hudTime=0,toastTimer,drag=null,orbit=0;
 const look=new THREE.Vector3(),wantedLook=new THREE.Vector3(),wantedEye=new THREE.Vector3();
 const pointer=new THREE.Vector2(),ray=new THREE.Raycaster(),waterPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
 let cameraHeading=0;
 loadIcons();
+createWeatherPanel(initialWeather, options => conditions.set(options));
 get('speed-scale').innerHTML='<b></b>'.repeat(20);
 
 function notice(message){
@@ -60,13 +65,16 @@ for(const dialog of [guide,chartDialog]){
 }
 get('return').onclick=()=>{
   navigation.reset();clearInput();orbit=0;viewMode=0;get('view-label').textContent='跟随视角';
-  updateCamera(navigation.state,1,true);wake(0,navigation.state,clock,true);
+  updateCamera(navigation.state,1,true);wake(0,navigation.state,clock,sea.height,true);
   guide.close();setPause(false);notice('已回到西侧泊位');
 };
 const bindings={KeyW:'forward',ArrowUp:'forward',KeyS:'reverse',ArrowDown:'reverse',KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right',Space:'brake'};
 window.addEventListener('keydown',e=>{
   if(e.altKey||e.ctrlKey||e.metaKey||!navigation)return;
   if(modalOpen()){if(e.code==='KeyM'&&chartDialog.open){e.preventDefault();chartDialog.close()}return}
+  // Leave native slider and checkbox keys available while WASD still steers.
+  if(e.target instanceof HTMLInputElement && (e.code.startsWith('Arrow') || e.code==='Space'))return;
+  if(e.target instanceof HTMLSelectElement)return;
   if(e.code==='Space'&&e.target instanceof HTMLButtonElement&&e.target.matches(':focus-visible'))return;
   if(bindings[e.code]){e.preventDefault();if(!paused)held.add(e.code);return}
   if(e.repeat)return;
@@ -132,12 +140,14 @@ function onResize(){
   if(navigation)updateHud(navigation.state);
 }
 function addLighting(){
-  scene.add(new THREE.HemisphereLight('#fffae6','#9cb4a6',1.85));
+  const ambient=new THREE.HemisphereLight('#fffae6','#9cb4a6',1.85);
+  scene.add(ambient);
   const sun=new THREE.DirectionalLight('#fff0cb',2.5);
   sun.position.set(-23,38,24);sun.castShadow=true;
   Object.assign(sun.shadow.camera,{left:-38,right:38,top:38,bottom:-38,near:.5,far:145});
   sun.shadow.mapSize.set(1536,1536);sun.shadow.normalBias=.025;sun.shadow.bias=-.00015;
   sun.target.position.set(-8,0,-10);scene.add(sun,sun.target);
+  return {ambient,sun};
 }
 function waterInteraction(){
   const canvas=renderer.domElement;
@@ -156,16 +166,36 @@ function frame(ms){
   const dt=frameTime?Math.min((ms-frameTime)/1000,.1):0;frameTime=ms;
   if(document.hidden)return;
   const stopped=paused||modalOpen(),control=inputs();
-  if(!stopped){navigation.step(dt,control);clock+=dt}
+  const weather=conditions.advance(stopped?0:dt);
+  if(!stopped){navigation.step(dt,control,weather);clock+=dt}
   const s=navigation.state;
   if(!stopped){
-    boat.position.set(s.x,surfaceHeight(s.x,s.z,clock),s.z);
+    sea.update(dt,clock,weather);
+    harbor.updateBuoys(sea.height);
+    const cs=Math.cos(s.heading),sn=Math.sin(s.heading);
+    const halfLength=1.8,halfBeam=.82;
+    const bow=sea.height(s.x+sn*halfLength,s.z-cs*halfLength);
+    const stern=sea.height(s.x-sn*halfLength,s.z+cs*halfLength);
+    const starboard=sea.height(s.x+cs*halfBeam,s.z+sn*halfBeam);
+    const port=sea.height(s.x-cs*halfBeam,s.z-sn*halfBeam);
+    const smoothing=-Math.expm1(-dt*5.5);
+    boat.position.set(s.x,(bow+stern+starboard+port)*.25,s.z);
     boat.rotation.order='YXZ';boat.rotation.y=-s.heading;
-    const dz=.9,cs=Math.cos(s.heading),sn=Math.sin(s.heading);
-    boat.rotation.x=.66*(surfaceHeight(s.x+sn*dz,s.z-cs*dz,clock)-surfaceHeight(s.x-sn*dz,s.z+cs*dz,clock))/(2*dz);
-    boat.rotation.z=.07*Math.sin(clock*.94+s.x*.28)+s.turnRate*Math.min(.17,Math.abs(s.speed)*.028);
-    boat.userData.update(clock,s.speed,control.steer);sea.update(clock);wake(dt,s,clock);
-    updateCamera(s,dt);audio.update(s.speed,false);
+    const pitch=Math.atan2(bow-stern,2*halfLength);
+    const beamWind=(weather.windX*cs+weather.windZ*sn)*weather.windSpeed;
+    const roll=Math.atan2(starboard-port,2*halfBeam)-beamWind*.009+s.turnRate*Math.min(.17,Math.abs(s.speed)*.028);
+    boat.rotation.x+=(pitch-boat.rotation.x)*smoothing;
+    boat.rotation.z+=(roll-boat.rotation.z)*smoothing;
+    boat.userData.update(clock,s.speed,control.steer,weather,s.heading,s.lateralSpeed);
+    wake(dt,s,clock,sea.height);
+    updateCamera(s,dt);
+    const flash=sky(dt,clock,weather,camera);
+    lights.ambient.intensity=1.85-.56*weather.overcast+.9*flash;
+    lights.sun.intensity=2.5-2.17*weather.overcast+2.1*flash;
+    if(flash>.12 && previousFlash<=.12 && thunderAt===Infinity)thunderAt=clock+1.2;
+    if(clock>=thunderAt){audio.thunder();thunderAt=Infinity}
+    previousFlash=flash;
+    audio.update(s.speed,false,weather);
   }
   hudTime+=dt;if(hudTime>.11){updateHud(s);hudTime=0}
   renderer.render(scene,camera);
@@ -176,10 +206,10 @@ async function start(){
   renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.99;
   renderer.domElement.setAttribute('aria-label','驾驶场景，拖动环顾小船，点水面产生涟漪');viewport.append(renderer.domElement);
   scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(46,1,.16,540);
-  addSky(scene);addLighting();harbor=createHarbor();scene.add(harbor.group);
+  sky=addSky(scene);lights=addLighting();harbor=createHarbor();scene.add(harbor.group);
   boat=createBoat();scene.add(boat);sea=createSea(scene);wake=createWake(scene);
   navigation=await createNavigation(harbor.obstacles);boat.position.set(0,0,2);
-  waterInteraction();onResize();updateCamera(navigation.state,1,true);wake(0,navigation.state,0,true);
+  waterInteraction();onResize();updateCamera(navigation.state,1,true);sea.update(0,0,conditions.state);wake(0,navigation.state,0,sea.height,true);
   window.addEventListener('resize',onResize);updateHud(navigation.state);
   renderer.setAnimationLoop(frame);get('loading').hidden=true;
 }

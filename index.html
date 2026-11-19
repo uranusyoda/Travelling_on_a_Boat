@@ -13,6 +13,7 @@
     <div class="tools">
       <button id="pause" class="tool pause" aria-label="暂停航行" title="暂停或继续 (P)"><span class="running-dot"></span><span id="pause-label">模拟运行中</span><i data-icon="pause"></i></button>
       <span class="divider"></span>
+      <button class="tool weather-trigger" id="weather-toggle" aria-controls="weather-panel" aria-expanded="false" aria-label="天气与海况" title="天气与海况"><i data-icon="clear"></i><span>天气</span></button>
       <button class="tool square" id="sound" aria-label="开启海港声音" title="开启海港声音" aria-pressed="false"><i data-icon="muted"></i></button>
       <button class="tool square" id="help" aria-label="驾驶指南" title="驾驶指南"><i data-icon="help"></i></button>
     </div>
@@ -23,6 +24,33 @@
     <div class="place"><div class="place-en"><span></span> QINGJIA HARBOR</div><h1>青岬港</h1><div class="location"><i data-icon="pin"></i><span id="location">西侧泊位</span></div></div>
     <div class="compass" aria-hidden="true"><canvas id="compass"></canvas><b></b></div>
     <div class="view-tools"><button id="view" title="切换视角 (C)"><i data-icon="camera"></i><span id="view-label">跟随视角</span><i class="tiny" data-icon="change"></i></button></div>
+    <section id="weather-panel" class="weather-panel" aria-labelledby="weather-title" hidden>
+      <header class="weather-heading"><h2 id="weather-title">天气与海况</h2><span id="weather-custom" hidden>自定义</span><button type="button" id="weather-close" class="weather-close" aria-label="收起天气与海况" title="收起"><i data-icon="x"></i></button></header>
+      <div class="weather-scroll">
+        <div class="weather-presets" role="group" aria-label="天气预设">
+          <button type="button" data-weather-preset="clear" aria-pressed="true"><i data-icon="clear"></i>晴天</button>
+          <button type="button" data-weather-preset="rainy" aria-pressed="false"><i data-icon="rainy"></i>雨天</button>
+          <button type="button" data-weather-preset="foggy" aria-pressed="false"><i data-icon="foggy"></i>大雾</button>
+          <button type="button" data-weather-preset="storm" aria-pressed="false"><i data-icon="storm"></i>雷雨</button>
+        </div>
+        <div class="weather-grid">
+          <div class="wind-bearing-field">
+            <label class="weather-field" for="wx-windFrom"><span>风向 <small>来自</small></span><output for="wx-windFrom"></output><input id="wx-windFrom" data-weather-key="windFrom" type="range" min="0" max="359" step="1"></label>
+            <button type="button" role="slider" id="wind-dial" class="wind-dial" aria-label="来风方向罗盘" aria-valuemin="0" aria-valuemax="359" title="拖动罗盘选来风方向，正上方为北"><span class="dial-north" aria-hidden="true">N</span><i aria-hidden="true"></i></button>
+          </div>
+          <label class="weather-field" for="wx-windSpeed"><span>风速</span><output for="wx-windSpeed"></output><input id="wx-windSpeed" data-weather-key="windSpeed" type="range" min="0" max="16" step="0.1"></label>
+          <label class="weather-field" for="wx-waveTo"><span>浪向 <small>去向</small></span><output for="wx-waveTo"></output><input id="wx-waveTo" data-weather-key="waveTo" type="range" min="0" max="359" step="1"></label>
+          <label class="weather-field" for="wx-waveHeight"><span>浪高</span><output for="wx-waveHeight"></output><input id="wx-waveHeight" data-weather-key="waveHeight" type="range" min="0" max="1.6" step="0.01"></label>
+        </div>
+        <label class="weather-switch-row" for="wx-followWind"><span>浪向跟随风的吹向</span><input id="wx-followWind" type="checkbox" data-weather-key="followWind"></label>
+        <div class="weather-grid atmosphere-grid">
+          <label class="weather-field" for="wx-rain"><span>雨量</span><output for="wx-rain"></output><input id="wx-rain" data-weather-key="rain" type="range" min="0" max="100" step="1"></label>
+          <label class="weather-field" for="wx-fog"><span>雾浓度</span><output for="wx-fog"></output><input id="wx-fog" data-weather-key="fog" type="range" min="0" max="100" step="1"></label>
+        </div>
+        <label class="weather-switch-row" for="wx-storm"><span><i data-icon="storm"></i>雷电</span><input id="wx-storm" type="checkbox" data-weather-key="storm"></label>
+        <button type="button" id="weather-reset" class="weather-reset" title="恢复晴天、西北微风和小浪"><i data-icon="reset"></i>恢复初始海况</button>
+      </div>
+    </section>
     <section class="instruments" aria-label="航行仪表">
       <div class="instrument-top"><span class="orange-rule"></span>航行仪表<span class="instrument-en">TELEMETRY</span></div>
       <div class="instruments-readings"><div><span class="reading-label">航速</span><div class="readout"><strong id="speed">0.0</strong><small>kn</small></div></div><div class="separator"></div><div><span class="reading-label">航向</span><div class="readout compass-reading"><strong id="heading">000</strong><em>°</em></div></div></div>

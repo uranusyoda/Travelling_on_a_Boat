@@ -1,4 +1,8 @@
 const paths = {
+  clear:'<circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1m0-14.2L17 7M7 17l-2.1 2.1"/>',
+  rainy:'<path d="M6 13.8a4.2 4.2 0 0 1 .7-8.3A5.3 5.3 0 0 1 16.8 7a3.6 3.6 0 0 1 1 7H6Zm1.4 3.1-1.1 2.4M12 17l-1.3 3.1m5.6-3.2-1.1 2.4"/>',
+  foggy:'<path d="M3 10.1a3.7 3.7 0 0 1 4.4-3.6 5 5 0 0 1 9.4 1.4 3.7 3.7 0 0 1 4 2.2M3 13h11m3 0h4M5 16.5h15M2 20h5m3 0h8"/>',
+  storm:'<path d="M8.3 13.7H6a4.2 4.2 0 0 1 .7-8.2A5.3 5.3 0 0 1 16.8 7a3.6 3.6 0 0 1 1 7h-1.2M12.8 11.5l-4 5.2h3.3L10.5 22l5.8-7h-3.5l1.8-3.5"/>',
   brand:'<path fill="currentColor" stroke="none" d="M11.4 2.4v13.3H4L11.4 2.4Zm2 .8 6.7 12.5h-6.7V3.2ZM2.5 17.5h19l-3 3.2H5.7z"/>',
   pause:'<path d="M8 5v14m8-14v14"/>', play:'<path fill="currentColor" stroke="none" d="m7 4 14 8-14 8z"/>',
   muted:'<path d="M11 5 6 9H3v6h3l5 4zM16 9l5 6m0-6-5 6"/>',

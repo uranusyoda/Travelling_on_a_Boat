@@ -496,14 +496,21 @@ export function createHarbor() {
       if(yy>.9) pine(xx,yy-.05,zz,2.1+rand()*2.5);
     }
   }
+  const floatingBuoys=[];
   function buoy(x,z,starboard) {
+    const model=new THREE.Group();
+    model.position.set(x,0,z);
+    group.add(model);
+    floatingBuoys.push(model);
+    const parts=sceneryBatch(model);
     const col=starboard?'#367767':'#ba5439';
-    s.taper(x,.17,z,.62,.77,.50,col,12);
-    s.taper(x,.48,z,.77,.50,.20,col,12);
-    s.taper(x,.77,z,.43,.31,.46,col,12);
-    s.taper(x,1.28,z,.18,.16,.66,col,10);
-    s.taper(x,1.22,z,.185,.185,.18,'#ead9b1',10);
-    s.taper(x,1.88,z,.21,starboard?.013:.21,.48,col,10);
+    parts.taper(0,.17,0,.62,.77,.50,col,12);
+    parts.taper(0,.48,0,.77,.50,.20,col,12);
+    parts.taper(0,.77,0,.43,.31,.46,col,12);
+    parts.taper(0,1.28,0,.18,.16,.66,col,10);
+    parts.taper(0,1.22,0,.185,.185,.18,'#ead9b1',10);
+    parts.taper(0,1.88,0,.21,starboard?.013:.21,.48,col,10);
+    parts.build();
     obstacles.push({x,z,radius:.75});
     mapFeatures.push({type:'buoy',x,z,starboard});
   }
@@ -522,5 +529,12 @@ export function createHarbor() {
   }
   gull(-10,9,-27,.24,1.05);gull(-7.6,10,-29,.43,.86);gull(13.8,7.1,-31,.70,1.05);
   s.build();
-  return {group,obstacles,mapFeatures};
+  return {group,obstacles,mapFeatures, updateBuoys(height) {
+    for (const buoy of floatingBuoys) {
+      const {x,z}=buoy.position;
+      buoy.position.y=height(x,z);
+      buoy.rotation.z=Math.atan2(height(x+.5,z)-height(x-.5,z),1)*.7;
+      buoy.rotation.x=Math.atan2(height(x,z-.5)-height(x,z+.5),1)*.7;
+    }
+  }};
 }

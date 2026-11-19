@@ -10,7 +10,8 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -f dist/index.html ]; then
+# Refresh an existing local build when the project is updated from GitHub.
+if [ ! -f dist/index.html ] || [ -n "$(find src public index.html package.json package-lock.json -type f -newer dist/index.html -print -quit)" ]; then
   if ! command -v npm >/dev/null 2>&1; then
     echo "未找到 npm，无法构建项目。"
     read -r -p "按回车键关闭窗口..."

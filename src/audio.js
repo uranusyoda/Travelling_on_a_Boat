@@ -43,13 +43,40 @@ function soundscape(ctx) {
   breathe(wind.level.gain, .097, .065);
   const wash = noise('bandpass', 1600, 0, .04, 2.7);
   breathe(wash.filter.frequency, .77, 160);
-  return { master, wash };
+  const rainfall = noise('highpass', 2900, 0, -.03, 1.8);
+
+  function thunder() {
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = .52;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 170;
+    const envelope = ctx.createGain();
+    const now = ctx.currentTime;
+    envelope.gain.setValueAtTime(.001, now);
+    envelope.gain.exponentialRampToValueAtTime(1.35, now + .22);
+    envelope.gain.exponentialRampToValueAtTime(.001, now + 2.65);
+    source.connect(filter).connect(envelope).connect(master);
+    source.onended = () => { source.disconnect(); filter.disconnect(); envelope.disconnect(); };
+    source.start(); source.stop(now + 2.7);
+  }
+  return { master, wash, wind, surf, rainfall, thunder };
 }
 
 export function createHarborAudio() {
   let ctx, voices, suspendTimer;
   let enabled = false, paused = false, speed = 0, lastWash = -1;
   let toggleVersion = 0;
+  let weatherStamp = '';
+  function weatherLevels(env) {
+    const stamp = [env.windSpeed, env.waveHeight, env.rain].map(v=>Math.round(v*20)).join('/');
+    if (stamp === weatherStamp) return;
+    weatherStamp = stamp;
+    voices.wind.level.gain.setTargetAtTime(.03 + .36 * env.windSpeed / 16, ctx.currentTime, .3);
+    voices.surf.level.gain.setTargetAtTime(.16 + .54 * env.waveHeight / 1.6, ctx.currentTime, .4);
+    voices.rainfall.level.gain.setTargetAtTime(.14 * env.rain, ctx.currentTime, .2);
+  }
 
   function setVolume() {
     voices.master.gain.setTargetAtTime(enabled && !paused ? .59 : 0, ctx.currentTime, .075);
@@ -93,12 +120,14 @@ export function createHarborAudio() {
       }
       return enabled;
     },
-    update(nextSpeed = 0, isPaused = false) {
+    thunder() { if (enabled && !paused && voices) voices.thunder(); },
+    update(nextSpeed = 0, isPaused = false, env) {
       speed = Number.isFinite(nextSpeed) ? nextSpeed : 0;
       const changed = paused !== Boolean(isPaused);
       paused = Boolean(isPaused);
       if (!enabled || !voices) return;
       if (changed) setVolume();
+      if (env) weatherLevels(env);
       setWash();
     },
   };

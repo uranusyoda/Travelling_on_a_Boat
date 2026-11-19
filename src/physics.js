@@ -5,7 +5,7 @@ const HARBOR_LIMIT = 135;
 const START = { x: 0, y: 0, z: 2 };
 const IDENTITY = { x: 0, y: 0, z: 0, w: 1 };
 const ZERO = { x: 0, y: 0, z: 0 };
-const INITIAL_STATE = { x: START.x, z: START.z, heading: 0, speed: 0, turnRate: 0 };
+const INITIAL_STATE = { x: START.x, z: START.z, heading: 0, speed: 0, lateralSpeed: 0, turnRate: 0 };
 let ready;
 
 function clamp(value, min, max) {
@@ -66,7 +66,7 @@ export async function createNavigation(obstacles = []) {
   let state = { ...INITIAL_STATE };
   let disposed = false;
 
-  function advance(throttle, steer, braking) {
+  function advance(throttle, steer, braking, airX, airZ) {
     const heading = getHeading(body);
     const sin = Math.sin(heading);
     const cos = Math.cos(heading);
@@ -74,13 +74,25 @@ export async function createNavigation(obstacles = []) {
     const forward = velocity.x * sin - velocity.z * cos;
     const lateral = velocity.x * cos + velocity.z * sin;
 
+    // Project the air velocity relative to the hull onto bow and starboard.
+    // A reaching sail develops forward drive, a headwind mostly adds drag.
+    const windForward = airX * sin - airZ * cos - forward;
+    const windSide = airX * cos + airZ * sin - lateral;
+    const windSpeed = Math.hypot(windForward, windSide);
+    const pressure = Math.min(windSpeed, 20);
+    const reach = windSpeed > 0.01 ? Math.abs(windSide) / windSpeed : 0;
+    const sailDrive = pressure * (0.0065 * Math.max(windForward, 0) + 0.005 * reach * Math.abs(windSide));
+    const airDrag = pressure * 0.002 * Math.min(windForward, 0);
+    const leeway = pressure * 0.009 * windSide;
     const thrust = throttle >= 0
       ? throttle * 2.8 * clamp((8.85 - forward) / 1.4, 0, 1)
       : throttle * 1.8 * clamp((3.35 + forward) / 0.9, 0, 1);
     const waterDrag = forward * (0.078 + 0.006 * Math.abs(forward));
     const brakeDrag = braking * Math.sign(forward) * Math.min(2.8 + Math.abs(forward) * 0.4, Math.abs(forward) / TIME_STEP);
-    const acceleration = thrust * (1 - braking) - waterDrag - brakeDrag;
-    const sideAcceleration = -lateral * (1.35 + 0.11 * Math.abs(forward) + 1.4 * braking);
+    // Ease the sails while backing and spill their load fully when docking.
+    const powered = thrust + sailDrive * (1 + 0.8 * Math.min(0, throttle)) + airDrag;
+    const acceleration = powered * (1 - braking) - waterDrag - brakeDrag;
+    const sideAcceleration = leeway * (1 - braking) - lateral * (1.35 + 0.11 * Math.abs(forward) + 2.4 * braking);
     const impulseScale = body.mass() * TIME_STEP;
     body.applyImpulse({
       x: (sin * acceleration + cos * sideAcceleration) * impulseScale,
@@ -102,20 +114,25 @@ export async function createNavigation(obstacles = []) {
     const { x, z } = body.translation();
     const heading = getHeading(body);
     const velocity = body.linvel();
-    const speed = velocity.x * Math.sin(heading) - velocity.z * Math.cos(heading);
-    return { x, z, heading, speed, turnRate: -body.angvel().y };
+    const sin = Math.sin(heading), cos = Math.cos(heading);
+    const speed = velocity.x * sin - velocity.z * cos;
+    const lateralSpeed = velocity.x * cos + velocity.z * sin;
+    return { x, z, heading, speed, lateralSpeed, turnRate: -body.angvel().y };
   }
 
   return {
     get state() { return state; },
-    step(dt, { throttle = 0, steer = 0, brake = false } = {}) {
+    step(dt, { throttle = 0, steer = 0, brake = false } = {}, environment) {
       if (disposed || !Number.isFinite(dt) || dt <= 0) return state;
       const engine = clamp(throttle, -1, 1);
       const rudder = clamp(steer, -1, 1);
       const braking = clamp(Number(brake), 0, 1);
+      const windSpeed = clamp(environment?.windSpeed || 0, 0, 30);
+      const airX = (environment?.windX || 0) * windSpeed;
+      const airZ = (environment?.windZ || 0) * windSpeed;
       accumulator += Math.min(dt, 0.2);
       while (accumulator >= TIME_STEP) {
-        advance(engine, rudder, braking);
+        advance(engine, rudder, braking, airX, airZ);
         accumulator -= TIME_STEP;
       }
       state = readState();
